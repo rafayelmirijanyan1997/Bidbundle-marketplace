@@ -4,6 +4,8 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  type User as FirebaseUser,
+  type UserCredential,
 } from "firebase/auth";
 
 import { apiFetch } from "./api";
@@ -42,6 +44,34 @@ export function clearAuth(): void {
   localStorage.removeItem("neighbid.role");
 }
 
+/**
+ * Shared shape of every auth flow: obtain a Firebase credential, store its
+ * ID token, sync the resulting profile with the backend, then return the
+ * token for the caller to fetch the full profile with.
+ */
+async function completeFirebaseAuth(
+  credential: Promise<UserCredential>,
+  buildSyncBody: (user: FirebaseUser) => Record<string, unknown>,
+  options: { silentSync?: boolean } = {}
+): Promise<string> {
+  const cred = await credential;
+  const token = await cred.user.getIdToken();
+  setToken(token);
+
+  const sync = apiFetch("/auth/sync", {
+    method: "POST",
+    token,
+    body: JSON.stringify(buildSyncBody(cred.user)),
+  });
+  if (options.silentSync) {
+    await sync.catch(() => {});
+  } else {
+    await sync;
+  }
+
+  return token;
+}
+
 /* ── Auth calls ── */
 export async function register(payload: {
   email: string;
@@ -52,48 +82,32 @@ export async function register(payload: {
   latitude?: number;
   longitude?: number;
 }): Promise<string> {
-  const cred = await createUserWithEmailAndPassword(auth, payload.email, payload.password);
-  const token = await cred.user.getIdToken();
-  setToken(token);
-  await apiFetch("/auth/sync", {
-    method: "POST",
-    token,
-    body: JSON.stringify({
+  return completeFirebaseAuth(
+    createUserWithEmailAndPassword(auth, payload.email, payload.password),
+    () => ({
       role: payload.role,
       full_name: payload.full_name,
       phone: payload.phone,
       latitude: payload.latitude,
       longitude: payload.longitude,
-    }),
-  });
-  return token;
+    })
+  );
 }
 
 export async function login(email: string, password: string): Promise<string> {
-  const cred = await signInWithEmailAndPassword(auth, email, password);
-  const token = await cred.user.getIdToken();
-  setToken(token);
-  await apiFetch("/auth/sync", {
-    method: "POST",
-    token,
-    body: JSON.stringify({ role: "homeowner", full_name: cred.user.email ?? "" }),
-  }).catch(() => {});
-  return token;
+  return completeFirebaseAuth(
+    signInWithEmailAndPassword(auth, email, password),
+    (user) => ({ role: "homeowner", full_name: user.email ?? "" }),
+    { silentSync: true }
+  );
 }
 
 export async function loginWithGoogle(): Promise<string> {
-  const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-  const token = await cred.user.getIdToken();
-  setToken(token);
-  await apiFetch("/auth/sync", {
-    method: "POST",
-    token,
-    body: JSON.stringify({
-      role: "homeowner",
-      full_name: cred.user.displayName ?? cred.user.email ?? "",
-    }),
-  }).catch(() => {});
-  return token;
+  return completeFirebaseAuth(
+    signInWithPopup(auth, new GoogleAuthProvider()),
+    (user) => ({ role: "homeowner", full_name: user.displayName ?? user.email ?? "" }),
+    { silentSync: true }
+  );
 }
 
 export async function fetchMe(token: string): Promise<AuthUser> {

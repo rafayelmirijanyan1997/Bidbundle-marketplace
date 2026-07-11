@@ -36,6 +36,7 @@ def upgrade() -> None:
         op.create_index(
             "ix_users_firebase_uid", "users", ["firebase_uid"], unique=True,
             sqlite_where=sa.text("firebase_uid IS NOT NULL"),
+            postgresql_where=sa.text("firebase_uid IS NOT NULL"),
         )
 
 
@@ -55,4 +56,5 @@ def downgrade() -> None:
         op.create_index(
             "ix_users_supabase_uid", "users", ["supabase_uid"], unique=True,
             sqlite_where=sa.text("supabase_uid IS NOT NULL"),
+            postgresql_where=sa.text("supabase_uid IS NOT NULL"),
         )

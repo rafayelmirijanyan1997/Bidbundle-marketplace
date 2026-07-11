@@ -31,9 +31,14 @@ def get_current_user(
         .first()
     )
     if user is None:
+        # Distinct from an invalid/expired token: the Firebase session is
+        # valid, the backend profile just hasn't been created yet (e.g.
+        # mid-registration, before /auth/sync has run). Callers use the
+        # "code" field to decide whether to clear the stored token — a
+        # real auth failure should, this transient state should not.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found. Call /auth/sync first.",
+            detail={"code": "profile_not_synced", "message": "User not found. Call /auth/sync first."},
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user

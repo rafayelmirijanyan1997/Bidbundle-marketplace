@@ -125,7 +125,7 @@ function Step1({
 
 // ── Step 2: Role selection ────────────────────────────────────────────────────
 function Step2({role, onRole, onNext, onBack}: any) {
-  const totalSteps = role === 'provider' ? 4 : role === 'admin' ? 3 : 3;
+  const totalSteps = role === 'provider' ? 4 : role === 'homeowner' ? 4 : 3;
   return (
     <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled">
       <TouchableOpacity onPress={onBack} style={s.backBtn}>
@@ -346,7 +346,7 @@ function Step3({
   // Auto-trigger on mount
   useEffect(() => { detectLocation(); }, []);
 
-  const stepTotal = isProvider ? 4 : 3;
+  const stepTotal = role === 'provider' ? 4 : role === 'homeowner' ? 4 : 3;
   const region: Region = coords
     ? {
         latitude: coords.lat,

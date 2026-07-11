@@ -14,8 +14,13 @@ FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
     "FIREBASE_SERVICE_ACCOUNT_PATH", "./firebase-service-account.json"
 )
 
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH))
+
+def _ensure_initialized() -> None:
+    # Deferred to first use (not import time) so a missing/invalid service
+    # account only breaks token verification, not the whole process — e.g.
+    # /health and every non-auth route still boot fine.
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH))
 
 
 def verify_firebase_token(token: str) -> dict:
@@ -26,6 +31,7 @@ def verify_firebase_token(token: str) -> dict:
     )
 
     try:
+        _ensure_initialized()
         payload = firebase_auth.verify_id_token(token)
     except Exception as exc:
         logger.error("verify_firebase_token failed: %r", exc)

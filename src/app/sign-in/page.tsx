@@ -184,9 +184,11 @@ export default function SignInPage() {
           </div>
 
           <button
-            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full border bg-white text-[13px] font-medium text-[var(--ink-900)] transition-all hover:bg-[var(--cream-50)] active:scale-[0.98]"
+            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full border bg-white text-[13px] font-medium text-[var(--ink-900)] transition-all hover:bg-[var(--cream-50)] active:scale-[0.98] disabled:opacity-60"
             style={{ borderColor: "var(--border-warm-strong)" }}
             type="button"
+            disabled={submitting}
+            onClick={handleGoogleSignIn}
           >
             <GoogleMark />
             Continue with Google

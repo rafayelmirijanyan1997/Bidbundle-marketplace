@@ -38,11 +38,17 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Don't clear the token here: a 401 can legitimately happen mid-signup
-      // (backend profile not created yet) while the Firebase session/token
-      // is still perfectly valid. Firebase's own auth state (via
-      // onIdTokenChanged) is the source of truth for sign-in status —
-      // explicit sign-out (logout()) is what clears the token.
+      const err = await res.json().catch(() => ({}));
+      const code = typeof err.detail === 'object' ? err.detail?.code : undefined;
+      if (code !== 'profile_not_synced') {
+        // A real auth failure (invalid/expired/revoked token) — clear it so
+        // the app falls back to sign-in instead of retrying forever.
+        await clearToken();
+      }
+      // else: the Firebase session/token is still valid, the backend
+      // profile just hasn't been created yet (e.g. mid-registration,
+      // before /auth/sync has run) — leave the token alone, register()/
+      // login() own that lifecycle.
       throw new Error('SESSION_EXPIRED');
     }
     const err = await res.json().catch(() => ({detail: res.statusText}));

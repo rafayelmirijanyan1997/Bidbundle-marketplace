@@ -31,10 +31,13 @@ target 'NeighBidIphone' do
       # :ccache_enabled => true
     )
 
-    # React Native Firebase + static frameworks: RNFBApp's module wrapper
+    # React Native Firebase + static frameworks: RNFB*'s module wrapper
     # imports plain (non-modular) React-Core headers, which Clang otherwise
-    # treats as a hard error under use_frameworks.
+    # treats as a hard error under use_frameworks. Scoped to just the RNFB
+    # pods (RNFBApp, RNFBAuth, ...) so this doesn't mask real modular-header
+    # bugs in unrelated dependencies.
     installer.pods_project.targets.each do |target|
+      next unless target.name.start_with?('RNFB')
       target.build_configurations.each do |config|
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
       end

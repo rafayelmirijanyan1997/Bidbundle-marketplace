@@ -83,19 +83,16 @@ def get_resident_service_interests(
     hoa = db.query(HOA).filter(HOA.admin_user_id == current_user.id).first()
     if hoa is None:
         return []
-    user_ids = [
-        row.user_id for row in
-        db.query(MembershipRequest.user_id)
-        .filter(MembershipRequest.hoa_id == hoa.id)
+    interests_rows = (
+        db.query(User.service_interests)
+        .join(MembershipRequest, MembershipRequest.user_id == User.id)
+        .filter(MembershipRequest.hoa_id == hoa.id, MembershipRequest.status == "approved")
         .all()
-    ]
-    if not user_ids:
-        return []
-    users = db.query(User).filter(User.id.in_(user_ids)).all()
+    )
     counter: Counter = Counter()
-    for u in users:
-        if u.service_interests:
-            for cat in u.service_interests.split(","):
+    for (service_interests,) in interests_rows:
+        if service_interests:
+            for cat in service_interests.split(","):
                 cat = cat.strip()
                 if cat:
                     counter[cat] += 1
