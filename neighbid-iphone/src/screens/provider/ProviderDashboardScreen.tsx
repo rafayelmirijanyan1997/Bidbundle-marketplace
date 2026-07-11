@@ -2,17 +2,20 @@ import React, {useEffect, useState, useCallback} from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {
-  MapPin, Briefcase, Star, MessageCircle, ChevronRight, Zap, ClipboardList, CalendarDays, Sparkles, TrendingUp, Bell,
+  MapPin, Briefcase, Star, MessageCircle, ChevronRight, Zap, ClipboardList, CalendarDays, Sparkles, TrendingUp, Bell, X,
 } from 'lucide-react-native';
 import {colors, radius, shadow} from '../../theme';
-import {providerApi, ProviderDashboard, JobFeedItem, ScheduleItem, ProviderProfile, DemandForecastResult} from '../../api/provider';
+import {providerApi, ProviderDashboard, JobFeedItem, ScheduleItem, ProviderProfile, DemandForecastResult, Notification} from '../../api/provider';
 import {useAuth} from '../../hooks/useAuth';
 import {Chip} from '../../components/Chip';
 import {formatScheduleDates, formatScheduleDuration, groupScheduleItems} from './scheduleUtils';
 import {getLosAngelesGreeting} from '../../utils/time';
+
+const DISMISSED_KEY = 'dismissed_notification_ids';
 
 const brandMark = require('../../assets/bidbundle-mark.png');
 
@@ -83,21 +86,31 @@ export default function ProviderDashboardScreen({
   const [jobs, setJobs] = useState<JobFeedItem[]>([]);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [forecast, setForecast] = useState<DemandForecastResult | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    AsyncStorage.getItem(DISMISSED_KEY).then(raw => {
+      if (raw) setDismissedIds(new Set(JSON.parse(raw)));
+    });
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      const [dash, prof, feed, sched] = await Promise.all([
+      const [dash, prof, feed, sched, notifs] = await Promise.all([
         providerApi.getDashboard(),
         providerApi.getProfile(),
         providerApi.getJobFeed(),
         providerApi.getSchedule(),
+        providerApi.getNotifications().catch(() => []),
       ]);
       setDashboard(dash);
       setProfile(prof);
       setJobs(feed.slice(0, 3));
       setSchedule(sched.filter(s => new Date(s.scheduled_at) >= new Date()));
+      setNotifications(notifs);
       const forecastNeighborhood = prof.neighborhood ?? user?.neighborhood;
       if (forecastNeighborhood) {
         try {
@@ -115,6 +128,12 @@ export default function ProviderDashboardScreen({
 
   useEffect(() => {load();}, [load]);
 
+  async function dismissNotification(id: number) {
+    const next = new Set([...dismissedIds, id]);
+    setDismissedIds(next);
+    await AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]));
+  }
+
   const companyName = profile?.company_name ?? user?.full_name ?? 'Provider';
   const firstName = companyName.split(' ')[0];
   const totalRevenue = Math.round((dashboard?.revenue_total_cents ?? 0) / 100);
@@ -122,6 +141,7 @@ export default function ProviderDashboardScreen({
   const greeting = getLosAngelesGreeting();
   const topForecast = forecast?.predictions?.[0] ?? null;
   const shortageCount = forecast?.predictions.filter(prediction => prediction.provider_shortage).length ?? 0;
+  const visibleNotifications = notifications.filter(n => !dismissedIds.has(n.id)).slice(0, 2);
 
   if (loading) {
     return <SafeAreaView style={s.safe} edges={['top']}><View style={s.centered}><Text style={s.loadTxt}>Loading…</Text></View></SafeAreaView>;
@@ -171,6 +191,22 @@ export default function ProviderDashboardScreen({
             </View>
           </View>
         </View>
+
+        {/* ── Notifications (dismissable) ── */}
+        {visibleNotifications.map(n => (
+          <View key={n.id} style={s.notifCard}>
+            <View style={s.notifLeft}>
+              <Bell size={14} color={colors.terracotta600} strokeWidth={2} />
+              <View style={s.notifText}>
+                <Text style={s.notifTitle} numberOfLines={1}>{n.title}</Text>
+                <Text style={s.notifBody} numberOfLines={2}>{n.body}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => dismissNotification(n.id)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+              <X size={16} color={colors.ink300} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        ))}
 
         {/* Top job hero */}
         {jobs[0] ? (
@@ -504,6 +540,25 @@ const s = StyleSheet.create({
     paddingHorizontal: 4,
   },
   bellBadgeText: {fontSize: 10, fontWeight: '700', color: '#fff'},
+
+  // Notifications
+  notifCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: colors.terracotta50,
+    borderWidth: 1,
+    borderColor: colors.terracotta100,
+    borderRadius: radius.md,
+    padding: 12,
+    gap: 10,
+  },
+  notifLeft: {flexDirection: 'row', alignItems: 'flex-start', gap: 8, flex: 1},
+  notifText: {flex: 1},
+  notifTitle: {fontSize: 13, fontWeight: '700', color: colors.terracotta600},
+  notifBody: {fontSize: 12, color: colors.ink700, marginTop: 1, lineHeight: 16},
 
   // Hero
   heroCard: {

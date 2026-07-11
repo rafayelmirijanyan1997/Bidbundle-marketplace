@@ -17,6 +17,7 @@ import {
   getComplaints, updateComplaintStatus,
   getRules, createRule, deleteRule,
   getPolls, createPoll, closePoll, launchPollBid, getPollBids,
+  acceptPollBid, declinePollBid,
   AnnouncementOut, ComplaintOut, RuleOut, PollOut, PollBidOut,
   SERVICE_CATEGORIES,
 } from '../../api/hoaCommunity';
@@ -84,6 +85,7 @@ export default function AdminHubScreen() {
   const [expandedBids, setExpandedBids] = useState<Record<number, PollBidOut[]>>({});
   const [loadingBids, setLoadingBids] = useState<number | null>(null);
   const [actioningPoll, setActioningPoll] = useState<number | null>(null);
+  const [actioningBid, setActioningBid] = useState<number | null>(null);
 
   const loadAnnouncements = useCallback(async () => {
     setAnnLoading(true);
@@ -241,6 +243,39 @@ export default function AdminHubScreen() {
       setExpandedBids(prev => ({...prev, [poll.id]: bids}));
     } catch (e: any) { Alert.alert('Error', e.message); }
     finally { setLoadingBids(null); }
+  }
+
+  async function refreshPollBids(pollId: number) {
+    const bids = await getPollBids(pollId);
+    setExpandedBids(prev => ({...prev, [pollId]: bids}));
+  }
+
+  function handleAcceptBid(pollId: number, bidId: number, providerName: string) {
+    Alert.alert('Accept bid', `Accept ${providerName}'s bid? They'll be notified they won, and all other bids on this request will be declined.`, [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Accept', onPress: async () => {
+        setActioningBid(bidId);
+        try {
+          await acceptPollBid(bidId);
+          await refreshPollBids(pollId);
+        } catch (e: any) { Alert.alert('Error', e.message); }
+        finally { setActioningBid(null); }
+      }},
+    ]);
+  }
+
+  function handleDeclineBid(pollId: number, bidId: number, providerName: string) {
+    Alert.alert('Decline bid', `Decline ${providerName}'s bid?`, [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Decline', style: 'destructive', onPress: async () => {
+        setActioningBid(bidId);
+        try {
+          await declinePollBid(bidId);
+          await refreshPollBids(pollId);
+        } catch (e: any) { Alert.alert('Error', e.message); }
+        finally { setActioningBid(null); }
+      }},
+    ]);
   }
 
   const openCount = complaints.filter(c => c.status === 'open').length;
@@ -610,24 +645,49 @@ export default function AdminHubScreen() {
                               <Text style={s.bidBoardEmpty}>No bids submitted yet. Share this request with providers.</Text>
                             ) : bids.map((b, i) => (
                               <View key={b.bid_id} style={[s.bidRow, i < bids.length - 1 && s.bidRowBorder]}>
-                                <View style={s.bidRank}>
-                                  <Text style={s.bidRankText}>{i + 1}</Text>
-                                </View>
-                                <View style={s.bidInfo}>
-                                  <Text style={s.bidProvider}>{b.provider_name}</Text>
-                                  <Text style={s.bidDays}>{b.estimated_days} day{b.estimated_days !== 1 ? 's' : ''}</Text>
-                                </View>
-                                <View style={s.bidAmount}>
-                                  <Text style={s.bidAmountText}>${b.amount.toLocaleString()}</Text>
-                                  <View style={[s.bidStatusPill, {
-                                    backgroundColor: b.status === 'accepted' ? colors.sage50 : colors.cream100,
-                                    borderColor: b.status === 'accepted' ? colors.sage100 : colors.border,
-                                  }]}>
-                                    <Text style={[s.bidStatusText, {
-                                      color: b.status === 'accepted' ? colors.sage700 : colors.ink400,
-                                    }]}>{b.status}</Text>
+                                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                  <View style={s.bidRank}>
+                                    <Text style={s.bidRankText}>{i + 1}</Text>
+                                  </View>
+                                  <View style={s.bidInfo}>
+                                    <Text style={s.bidProvider}>{b.provider_name}</Text>
+                                    <Text style={s.bidDays}>{b.estimated_days} day{b.estimated_days !== 1 ? 's' : ''}</Text>
+                                  </View>
+                                  <View style={s.bidAmount}>
+                                    <Text style={s.bidAmountText}>${b.amount.toLocaleString()}</Text>
+                                    <View style={[s.bidStatusPill, {
+                                      backgroundColor: b.status === 'accepted' ? colors.sage50 : colors.cream100,
+                                      borderColor: b.status === 'accepted' ? colors.sage100 : colors.border,
+                                    }]}>
+                                      <Text style={[s.bidStatusText, {
+                                        color: b.status === 'accepted' ? colors.sage700 : colors.ink400,
+                                      }]}>{b.status}</Text>
+                                    </View>
                                   </View>
                                 </View>
+
+                                {b.status === 'pending' && (
+                                  actioningBid === b.bid_id ? (
+                                    <ActivityIndicator color={colors.terracotta600} style={{marginTop: 10}} />
+                                  ) : (
+                                    <View style={s.bidReviewActions}>
+                                      <TouchableOpacity
+                                        style={[s.bidReviewBtn, s.bidReviewDecline]}
+                                        onPress={() => handleDeclineBid(p.id, b.bid_id, b.provider_name)}
+                                        activeOpacity={0.8}>
+                                        <XCircle size={13} color={colors.ink500} strokeWidth={2} />
+                                        <Text style={s.bidReviewDeclineText}>Decline</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        style={[s.bidReviewBtn, s.bidReviewAccept]}
+                                        onPress={() => handleAcceptBid(p.id, b.bid_id, b.provider_name)}
+                                        activeOpacity={0.8}>
+                                        <CheckCircle size={13} color="#fff" strokeWidth={2} />
+                                        <Text style={s.bidReviewAcceptText}>Accept</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  )
+                                )}
                               </View>
                             ))}
                           </View>
@@ -865,14 +925,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8,
   },
   bidBoardEmpty: {fontSize: 13, color: colors.ink400, padding: 14, textAlign: 'center'},
-  bidRow: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 10},
+  bidRow: {paddingHorizontal: 14, paddingVertical: 12, gap: 10},
   bidRowBorder: {borderBottomWidth: 1, borderBottomColor: colors.border},
   bidRank: {
     width: 24, height: 24, borderRadius: 12, backgroundColor: colors.warmDark,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   bidRankText: {fontSize: 11, fontWeight: '800', color: '#FBF7F1'},
-  bidInfo: {flex: 1},
+  bidInfo: {flex: 1, marginLeft: 10},
   bidProvider: {fontSize: 14, fontWeight: '700', color: colors.ink900},
   bidDays: {fontSize: 12, color: colors.ink400, marginTop: 1},
   bidAmount: {alignItems: 'flex-end', gap: 4},
@@ -881,4 +941,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1,
   },
   bidStatusText: {fontSize: 10, fontWeight: '700'},
+  bidReviewActions: {flexDirection: 'row', gap: 8, marginTop: 10},
+  bidReviewBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 9, borderRadius: radius.pill, borderWidth: 1,
+  },
+  bidReviewDecline: {backgroundColor: colors.cream50, borderColor: colors.border},
+  bidReviewDeclineText: {fontSize: 12, fontWeight: '700', color: colors.ink500},
+  bidReviewAccept: {backgroundColor: colors.terracotta600, borderColor: colors.terracotta600},
+  bidReviewAcceptText: {fontSize: 12, fontWeight: '700', color: '#fff'},
 });

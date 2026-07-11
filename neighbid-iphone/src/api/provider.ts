@@ -139,6 +139,16 @@ export interface DemandForecastResult {
   stub: boolean;
 }
 
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  action_url: string | null;
+  read: boolean;
+  created_at: string;
+}
+
 export const providerApi = {
   getDashboard: () => apiFetch<ProviderDashboard>('/provider/dashboard'),
   getProfile: () => apiFetch<ProviderProfile>('/provider/me'),
@@ -147,6 +157,7 @@ export const providerApi = {
   getJobFeed: (category?: string) =>
     apiFetch<JobFeedItem[]>(`/provider/job-feed${category ? `?category=${category}` : ''}`),
   getBids: () => apiFetch<ProviderBid[]>('/provider/bids'),
+  getNotifications: () => apiFetch<Notification[]>('/notifications'),
   getSchedule: () => apiFetch<ScheduleItem[]>('/provider/schedule'),
   getConversations: () => apiFetch<ProviderConversation[]>('/provider/conversations'),
   getChannels: () => apiFetch<ProviderGroupChannel[]>('/provider/channels'),

@@ -176,3 +176,11 @@ export async function launchPollBid(pollId: number): Promise<PollOut> {
 export async function getPollBids(pollId: number): Promise<PollBidOut[]> {
   return apiFetch<PollBidOut[]>(`/hoa-community/polls/${pollId}/bids`);
 }
+
+export async function acceptPollBid(bidId: number): Promise<void> {
+  await apiFetch(`/bids/${bidId}/accept`, {method: 'PUT'});
+}
+
+export async function declinePollBid(bidId: number): Promise<void> {
+  await apiFetch(`/bids/${bidId}/decline`, {method: 'PUT'});
+}

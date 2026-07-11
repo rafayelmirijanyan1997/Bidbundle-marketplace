@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from dependencies import require_role, get_db
 from models.bid import Bid
 from models.message import ChannelMember, GroupChannel
+from models.notification import Notification
 from models.schedule_item import ScheduleItem
 from models.request import ServiceRequest
 from models.user import User
@@ -150,7 +151,7 @@ def create_bid(
 def accept_bid(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("homeowner", "hoa_homeowner")),
+    current_user: User = Depends(require_role("homeowner", "hoa_homeowner", "admin")),
 ) -> BidOut:
     bid = _get_bid_or_404(db, id)
     service_request = _get_request_or_404(db, bid.request_id)
@@ -172,6 +173,17 @@ def accept_bid(
     if _channel:
         _channel.expires_at = datetime.utcnow() + timedelta(days=30)
         db.add(_channel)
+
+    db.add(
+        Notification(
+            user_id=bid.provider_id,
+            type="bid_accepted",
+            title="You won the bid!",
+            body=f'Your bid on "{service_request.title}" was accepted. You are the winning provider.',
+            action_url="/app/provider/bids",
+        )
+    )
+
     db.commit()
     db.refresh(bid)
     return bid
@@ -181,7 +193,7 @@ def accept_bid(
 def decline_bid(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("homeowner", "hoa_homeowner")),
+    current_user: User = Depends(require_role("homeowner", "hoa_homeowner", "admin")),
 ) -> BidOut:
     bid = _get_bid_or_404(db, id)
     service_request = _get_request_or_404(db, bid.request_id)
