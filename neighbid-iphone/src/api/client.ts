@@ -38,8 +38,17 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Token expired — clear it so the app redirects to sign-in
-      await clearToken();
+      const err = await res.json().catch(() => ({}));
+      const code = typeof err.detail === 'object' ? err.detail?.code : undefined;
+      if (code !== 'profile_not_synced') {
+        // A real auth failure (invalid/expired/revoked token) — clear it so
+        // the app falls back to sign-in instead of retrying forever.
+        await clearToken();
+      }
+      // else: the Firebase session/token is still valid, the backend
+      // profile just hasn't been created yet (e.g. mid-registration,
+      // before /auth/sync has run) — leave the token alone, register()/
+      // login() own that lifecycle.
       throw new Error('SESSION_EXPIRED');
     }
     const err = await res.json().catch(() => ({detail: res.statusText}));

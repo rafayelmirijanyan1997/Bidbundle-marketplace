@@ -46,13 +46,6 @@ app.include_router(hoa_ai_router)
 app.include_router(hoa_community_router)
 
 
-@app.on_event("startup")
-def startup():
-    # Schema is managed by Supabase (supabase_schema.sql).
-    # No DDL migrations needed at startup.
-    pass
-
-
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.1.0"}

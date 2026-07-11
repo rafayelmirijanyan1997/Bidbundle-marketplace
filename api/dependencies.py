@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth import verify_supabase_token
+from auth import verify_firebase_token
 from database import SessionLocal
 from models.user import User
 
@@ -22,25 +22,30 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    payload = verify_supabase_token(token)
-    supabase_uid = payload.get("sub")
+    payload = verify_firebase_token(token)
+    firebase_uid = payload.get("uid")
     user = (
         db.query(User)
-        .filter(text("supabase_uid = :supabase_uid"))
-        .params(supabase_uid=supabase_uid)
+        .filter(text("firebase_uid = :firebase_uid"))
+        .params(firebase_uid=firebase_uid)
         .first()
     )
     if user is None:
+        # Distinct from an invalid/expired token: the Firebase session is
+        # valid, the backend profile just hasn't been created yet (e.g.
+        # mid-registration, before /auth/sync has run). Callers use the
+        # "code" field to decide whether to clear the stored token — a
+        # real auth failure should, this transient state should not.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found. Call /auth/sync first.",
+            detail={"code": "profile_not_synced", "message": "User not found. Call /auth/sync first."},
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
 
 
 def get_token_payload(token: str = Depends(oauth2_scheme)) -> dict:
-    return verify_supabase_token(token)
+    return verify_firebase_token(token)
 
 
 def require_role(*roles: str):

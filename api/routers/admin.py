@@ -1,13 +1,21 @@
+from collections import Counter
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from dependencies import get_db, require_role
 from models.bid import Bid
-from models.community import ActivityLog, CommunityMember
+from models.community import ActivityLog, CommunityMember, HOA, MembershipRequest
 from models.request import ServiceRequest
 from models.user import User
 from schemas.community import ActivityLogOut, AdminStatsOut, SavingsCategoryOut, SavingsReportOut
+
+
+class ResidentInterestOut(BaseModel):
+    category: str
+    count: int
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -65,3 +73,30 @@ def get_admin_stats(
         monthly_savings=int(total_savings),
         total_savings_all_time=int(total_savings),
     )
+
+
+@router.get("/resident-service-interests", response_model=list[ResidentInterestOut])
+def get_resident_service_interests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+) -> list[ResidentInterestOut]:
+    hoa = db.query(HOA).filter(HOA.admin_user_id == current_user.id).first()
+    if hoa is None:
+        return []
+    interests_rows = (
+        db.query(User.service_interests)
+        .join(MembershipRequest, MembershipRequest.user_id == User.id)
+        .filter(MembershipRequest.hoa_id == hoa.id, MembershipRequest.status == "approved")
+        .all()
+    )
+    counter: Counter = Counter()
+    for (service_interests,) in interests_rows:
+        if service_interests:
+            for cat in service_interests.split(","):
+                cat = cat.strip()
+                if cat:
+                    counter[cat] += 1
+    return [
+        ResidentInterestOut(category=cat, count=cnt)
+        for cat, cnt in counter.most_common()
+    ]

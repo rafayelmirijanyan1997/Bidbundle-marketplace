@@ -106,3 +106,12 @@ export async function approveMembershipRequest(requestId: number): Promise<void>
 export async function declineMembershipRequest(requestId: number): Promise<void> {
   await apiFetch(`/community/requests/${requestId}/decline`, {method: 'POST'});
 }
+
+export interface ResidentInterestOut {
+  category: string;
+  count: number;
+}
+
+export async function getResidentServiceInterests(): Promise<ResidentInterestOut[]> {
+  return apiFetch<ResidentInterestOut[]>('/admin/resident-service-interests');
+}

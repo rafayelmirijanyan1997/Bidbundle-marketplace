@@ -7,7 +7,7 @@ import { useState } from "react";
 import { AuthShowcase } from "@/components/auth/AuthShowcase";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { clearAuth, fetchMe, login, setToken } from "@/lib/auth";
+import { clearAuth, fetchMe, login, loginWithGoogle } from "@/lib/auth";
 import { saveRole, type UserRole } from "@/utils/onboardingState";
 
 const destinationByRole: Record<UserRole, string> = {
@@ -38,23 +38,38 @@ export default function SignInPage() {
 
   const canSubmit = email.trim().length > 0 && password.trim().length > 0 && !submitting;
 
+  const completeSignIn = async (token: string) => {
+    const me = await fetchMe(token);
+    if (me.role !== role) {
+      clearAuth();
+      setAuthError(`This account is registered as ${me.role}. Sign in using the ${me.role} option.`);
+      setSubmitting(false);
+      return;
+    }
+    saveRole(me.role as UserRole);
+    router.push(destinationByRole[me.role as UserRole]);
+  };
+
   const handleSignIn = async () => {
     setSubmitting(true);
     setAuthError(null);
     try {
-      const tokens = await login(email, password);
-      setToken(tokens.access_token);
-      const me = await fetchMe(tokens.access_token);
-      if (me.role !== role) {
-        clearAuth();
-        setAuthError(`This account is registered as ${me.role}. Sign in using the ${me.role} option.`);
-        setSubmitting(false);
-        return;
-      }
-      saveRole(me.role as UserRole);
-      router.push(destinationByRole[me.role as UserRole]);
+      const token = await login(email, password);
+      await completeSignIn(token);
     } catch (e: unknown) {
       setAuthError(e instanceof Error ? e.message : "Sign in failed");
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setSubmitting(true);
+    setAuthError(null);
+    try {
+      const token = await loginWithGoogle();
+      await completeSignIn(token);
+    } catch (e: unknown) {
+      setAuthError(e instanceof Error ? e.message : "Google sign in failed");
       setSubmitting(false);
     }
   };
@@ -169,9 +184,11 @@ export default function SignInPage() {
           </div>
 
           <button
-            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full border bg-white text-[13px] font-medium text-[var(--ink-900)] transition-all hover:bg-[var(--cream-50)] active:scale-[0.98]"
+            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full border bg-white text-[13px] font-medium text-[var(--ink-900)] transition-all hover:bg-[var(--cream-50)] active:scale-[0.98] disabled:opacity-60"
             style={{ borderColor: "var(--border-warm-strong)" }}
             type="button"
+            disabled={submitting}
+            onClick={handleGoogleSignIn}
           >
             <GoogleMark />
             Continue with Google

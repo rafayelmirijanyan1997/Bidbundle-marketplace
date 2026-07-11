@@ -9,7 +9,7 @@ import { RoleStep } from "@/components/onboarding/RoleStep";
 import { SignupStep } from "@/components/onboarding/SignupStep";
 import { VerifyAreaStep } from "@/components/onboarding/VerifyAreaStep";
 import { apiFetch } from "@/lib/api";
-import { register, setToken } from "@/lib/auth";
+import { register } from "@/lib/auth";
 import { saveRole, type UserRole } from "@/utils/onboardingState";
 
 type OnboardingStep = 1 | 2 | 3 | 4;
@@ -101,7 +101,7 @@ export default function GetStartedPage() {
     setSubmitting(true);
     setApiError(null);
     try {
-      const tokens = await register({
+      const token = await register({
         email: signup.email,
         password: signup.password,
         full_name: signup.fullName,
@@ -110,7 +110,6 @@ export default function GetStartedPage() {
         latitude: coords?.lat,
         longitude: coords?.lng,
       });
-      setToken(tokens.access_token);
 
       if (role === "provider") {
         await apiFetch("/provider/me", {
@@ -126,7 +125,7 @@ export default function GetStartedPage() {
             is_insured: providerBusiness.isInsured,
             license_number: providerBusiness.isLicensed ? providerBusiness.licenseNumber : null,
           }),
-          token: tokens.access_token,
+          token,
         });
       }
 

@@ -1,7 +1,15 @@
-# Claude / Codex / MCP (local tooling config)
+# Tooling config
 .claude/
 .codex/
 .mcp.json
+
+# Internal planning / AI workflow files (not for public repo)
+CLAUDE.md
+my_prompt.md
+claude_website_designs/
+docs/
+prompts/
+scripts/
 
 # Next.js
 .next/
@@ -29,6 +37,9 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+
+# Firebase
+api/firebase-service-account*.json
 
 # macOS
 .DS_Store

@@ -10,11 +10,28 @@ import {colors, radius} from '../../theme';
 import {validateInvite, acceptInvite, User} from '../../api/auth';
 import {AuthStackParamList} from '../../navigation/AuthNavigator';
 
+const SERVICE_OPTIONS = [
+  'Plumbing', 'Electrical', 'HVAC', 'Lawn care',
+  'Cleaning', 'Handyman', 'Roofing', 'Painting', 'Pest control',
+];
+
+const svc = StyleSheet.create({
+  grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20},
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: colors.cream100, borderWidth: 1, borderColor: colors.border,
+  },
+  chipActive: {backgroundColor: colors.terracotta600, borderColor: colors.terracotta600},
+  chipText: {fontSize: 13, fontWeight: '600', color: colors.ink700},
+  chipTextActive: {color: '#fff'},
+  hint: {fontSize: 13, color: colors.ink400, marginTop: 16, textAlign: 'center'},
+});
+
 type Props = NativeStackScreenProps<AuthStackParamList, 'InviteSignUp'> & {
   onAuth: (user: User) => void;
 };
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3;
 
 function StepDots({current, total}: {current: Step; total: number}) {
   return (
@@ -55,7 +72,14 @@ export default function InviteSignUpScreen({navigation, onAuth}: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
+  const [interests, setInterests] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  function toggleInterest(svc: string) {
+    setInterests(prev =>
+      prev.includes(svc) ? prev.filter(item => item !== svc) : [...prev, svc],
+    );
+  }
 
   async function handleValidate() {
     if (!code.trim()) return;
@@ -82,6 +106,7 @@ export default function InviteSignUpScreen({navigation, onAuth}: Props) {
         password,
         full_name: name.trim(),
         unit_number: unitNumber.trim() || undefined,
+        service_interests: interests.length > 0 ? interests.join(',') : undefined,
       });
       onAuth(user);
     } catch (e: any) {
@@ -100,10 +125,10 @@ export default function InviteSignUpScreen({navigation, onAuth}: Props) {
             <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
               <Text style={s.backText}>← Back</Text>
             </TouchableOpacity>
-            <Text style={s.eyebrow}>Step 1 of 2</Text>
+            <Text style={s.eyebrow}>Step 1 of 3</Text>
             <Text style={s.title}>Enter invite code</Text>
             <Text style={s.sub}>Your HOA manager sent you a code. Enter it here to join your community.</Text>
-            <StepDots current={1} total={2} />
+            <StepDots current={1} total={3} />
 
             <View style={s.fieldWrap}>
               <Text style={s.fieldLabel}>INVITE CODE</Text>
@@ -133,15 +158,15 @@ export default function InviteSignUpScreen({navigation, onAuth}: Props) {
               style={s.btn}
             />
           </ScrollView>
-        ) : (
+        ) : step === 2 ? (
           <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
             <TouchableOpacity onPress={() => setStep(1)} style={s.backBtn}>
               <Text style={s.backText}>← Back</Text>
             </TouchableOpacity>
-            <Text style={s.eyebrow}>Step 2 of 2</Text>
+            <Text style={s.eyebrow}>Step 2 of 3</Text>
             <Text style={s.title}>Create your account</Text>
             <Text style={s.sub}>You're joining your community — no area verification needed.</Text>
-            <StepDots current={2} total={2} />
+            <StepDots current={2} total={3} />
 
             {communityInfo && (
               <View style={s.communityBanner}>
@@ -180,9 +205,44 @@ export default function InviteSignUpScreen({navigation, onAuth}: Props) {
             </View>
 
             <Button
-              label={submitting ? 'Creating account…' : 'Join community'}
+              label="Continue"
+              onPress={() => setStep(3)}
+              disabled={!canFinish}
+              style={s.btn}
+            />
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+            <TouchableOpacity onPress={() => setStep(2)} style={s.backBtn}>
+              <Text style={s.backText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={s.eyebrow}>Step 3 of 3</Text>
+            <Text style={s.title}>What services interest you?</Text>
+            <Text style={s.sub}>Select all that apply. Your HOA manager can see what residents need.</Text>
+            <StepDots current={3} total={3} />
+
+            <View style={svc.grid}>
+              {SERVICE_OPTIONS.map(option => {
+                const selected = interests.includes(option);
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    onPress={() => toggleInterest(option)}
+                    style={[svc.chip, selected && svc.chipActive]}>
+                    <Text style={[svc.chipText, selected && svc.chipTextActive]}>{option}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {interests.length === 0 && (
+              <Text style={svc.hint}>Select at least one service to continue.</Text>
+            )}
+
+            <Button
+              label={submitting ? 'Joining community…' : 'Join community'}
               onPress={handleFinish}
-              disabled={!canFinish || submitting}
+              disabled={interests.length === 0 || submitting}
               loading={submitting}
               style={s.btn}
             />
