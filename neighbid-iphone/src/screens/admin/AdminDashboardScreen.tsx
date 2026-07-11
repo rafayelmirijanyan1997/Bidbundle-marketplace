@@ -12,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import {colors, radius, shadow} from '../../theme';
 import {useAuth} from '../../hooks/useAuth';
-import {getMyAdminCommunity, getHoaStats, HOAOut, HoaStatsOut} from '../../api/community';
+import {getMyAdminCommunity, getHoaStats, getResidentServiceInterests, HOAOut, HoaStatsOut, ResidentInterestOut} from '../../api/community';
 
 const brandMark = require('../../assets/bidbundle-mark.png');
 
@@ -43,6 +43,7 @@ export default function AdminDashboardScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [hoa, setHoa] = useState<HOAOut | null>(null);
   const [stats, setStats] = useState<HoaStatsOut | null>(null);
+  const [residentInterests, setResidentInterests] = useState<ResidentInterestOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,8 +51,12 @@ export default function AdminDashboardScreen() {
     try {
       const community = await getMyAdminCommunity();
       setHoa(community);
-      const s = await getHoaStats(community.id);
+      const [s, interests] = await Promise.all([
+        getHoaStats(community.id),
+        getResidentServiceInterests(),
+      ]);
       setStats(s);
+      setResidentInterests(interests);
     } catch {
       // silently ignore — empty state handles it
     } finally {
@@ -238,6 +243,30 @@ export default function AdminDashboardScreen() {
             </View>
           </View>
         )}
+
+        {/* ── Resident interests ── */}
+        {residentInterests.length > 0 && (
+          <View style={s.communitySection}>
+            <Text style={s.sectionTitle}>What your residents want</Text>
+            <View style={s.communityCard}>
+              {residentInterests.map((item, i) => {
+                const max = residentInterests[0]?.count ?? 1;
+                const pct = Math.round((item.count / max) * 100);
+                return (
+                  <View key={item.category} style={[s.infoRow, i < residentInterests.length - 1 && s.infoRowBorder]}>
+                    <View style={s.interestLeft}>
+                      <Text style={s.infoLabel}>{item.category}</Text>
+                      <View style={s.interestBarTrack}>
+                        <View style={[s.interestBarFill, {width: `${pct}%`}]} />
+                      </View>
+                    </View>
+                    <Text style={s.interestCount}>{item.count}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -353,4 +382,10 @@ const s = StyleSheet.create({
   infoRowBorder: {borderBottomWidth: 1, borderBottomColor: colors.border},
   infoLabel: {fontSize: 13, fontWeight: '600', color: colors.ink500},
   infoValue: {fontSize: 13, fontWeight: '700', color: colors.ink900, maxWidth: '55%', textAlign: 'right'},
+
+  // Resident interests
+  interestLeft: {flex: 1, marginRight: 12},
+  interestBarTrack: {height: 4, backgroundColor: colors.cream200, borderRadius: 2, overflow: 'hidden', marginTop: 6},
+  interestBarFill: {height: 4, backgroundColor: colors.terracotta500, borderRadius: 2},
+  interestCount: {fontSize: 15, fontWeight: '700', color: colors.terracotta600, minWidth: 24, textAlign: 'right'},
 });

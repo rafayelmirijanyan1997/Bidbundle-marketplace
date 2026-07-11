@@ -1,4 +1,10 @@
-import {supabase} from './supabase';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  getIdToken,
+  signInWithEmailAndPassword,
+  signOut,
+} from '@react-native-firebase/auth';
 import {apiFetch, setToken, clearToken} from './client';
 
 export type Role = 'homeowner' | 'provider' | 'admin' | 'hoa_homeowner';
@@ -17,14 +23,15 @@ export interface User {
 }
 
 export async function login(email: string, password: string): Promise<User> {
-  const {data, error} = await supabase.auth.signInWithPassword({email, password});
-  if (error || !data.session) throw new Error(error?.message ?? 'Sign in failed');
-  await setToken(data.session.access_token);
+  const {user: fbUser} = await signInWithEmailAndPassword(getAuth(), email, password);
+  const token = await getIdToken(fbUser);
+  await setToken(token);
   await apiFetch('/auth/sync', {
     method: 'POST',
-    body: JSON.stringify({role: 'homeowner', full_name: data.user?.email ?? ''}),
+    token,
+    body: JSON.stringify({role: 'homeowner', full_name: fbUser.email ?? ''}),
   }).catch(() => {});
-  return fetchMe();
+  return fetchMe(token);
 }
 
 export async function register(params: {
@@ -34,23 +41,23 @@ export async function register(params: {
   role: Role;
   latitude?: number;
   longitude?: number;
+  service_interests?: string;
 }): Promise<User> {
-  const {data, error} = await supabase.auth.signUp({
-    email: params.email,
-    password: params.password,
-  });
-  if (error || !data.session) throw new Error(error?.message ?? 'Registration failed');
-  await setToken(data.session.access_token);
+  const {user: fbUser} = await createUserWithEmailAndPassword(getAuth(), params.email, params.password);
+  const token = await getIdToken(fbUser);
+  await setToken(token);
   await apiFetch('/auth/sync', {
     method: 'POST',
+    token,
     body: JSON.stringify({
       role: params.role,
       full_name: params.full_name,
       latitude: params.latitude,
       longitude: params.longitude,
+      service_interests: params.service_interests,
     }),
   });
-  return fetchMe();
+  return fetchMe(token);
 }
 
 export async function registerHoa(params: {
@@ -62,14 +69,12 @@ export async function registerHoa(params: {
   community_address: string;
   unit_count?: number;
 }): Promise<User> {
-  const {data, error} = await supabase.auth.signUp({
-    email: params.email,
-    password: params.password,
-  });
-  if (error || !data.session) throw new Error(error?.message ?? 'Registration failed');
-  await setToken(data.session.access_token);
+  const {user: fbUser} = await createUserWithEmailAndPassword(getAuth(), params.email, params.password);
+  const token = await getIdToken(fbUser);
+  await setToken(token);
   await apiFetch('/auth/register-hoa', {
     method: 'POST',
+    token,
     body: JSON.stringify({
       email: params.email,
       full_name: params.full_name,
@@ -79,7 +84,7 @@ export async function registerHoa(params: {
       unit_count: params.unit_count,
     }),
   });
-  return fetchMe();
+  return fetchMe(token);
 }
 
 export async function validateInvite(code: string): Promise<{
@@ -100,30 +105,30 @@ export async function acceptInvite(params: {
   password: string;
   full_name: string;
   unit_number?: string;
+  service_interests?: string;
 }): Promise<User> {
-  const {data, error} = await supabase.auth.signUp({
-    email: params.email,
-    password: params.password,
-  });
-  if (error || !data.session) throw new Error(error?.message ?? 'Registration failed');
-  await setToken(data.session.access_token);
+  const {user: fbUser} = await createUserWithEmailAndPassword(getAuth(), params.email, params.password);
+  const token = await getIdToken(fbUser);
+  await setToken(token);
   await apiFetch('/auth/accept-invite', {
     method: 'POST',
+    token,
     body: JSON.stringify({
       invite_code: params.invite_code,
       email: params.email,
       full_name: params.full_name,
       unit_number: params.unit_number,
+      service_interests: params.service_interests,
     }),
   });
-  return fetchMe();
+  return fetchMe(token);
 }
 
-export async function fetchMe(): Promise<User> {
-  return apiFetch<User>('/users/me');
+export async function fetchMe(token?: string): Promise<User> {
+  return apiFetch<User>('/users/me', token ? {token} : {});
 }
 
 export async function logout(): Promise<void> {
-  await supabase.auth.signOut();
+  await signOut(getAuth());
   await clearToken();
 }

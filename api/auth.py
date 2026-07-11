@@ -1,38 +1,24 @@
+import logging
 import os
 
-import httpx
 from dotenv import load_dotenv
+
+logger = logging.getLogger("uvicorn.error")
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-_jwks_cache: dict = {}
+FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
+    "FIREBASE_SERVICE_ACCOUNT_PATH", "./firebase-service-account.json"
+)
+
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH))
 
 
-def _get_jwks() -> dict:
-    global _jwks_cache
-
-    if not _jwks_cache:
-        if not SUPABASE_URL:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        response = httpx.get(
-            f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json",
-            timeout=10,
-        )
-        response.raise_for_status()
-        _jwks_cache = response.json()
-
-    return _jwks_cache
-
-
-def verify_supabase_token(token: str) -> dict:
+def verify_firebase_token(token: str) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -40,14 +26,9 @@ def verify_supabase_token(token: str) -> dict:
     )
 
     try:
-        payload = jwt.decode(
-            token,
-            _get_jwks(),
-            algorithms=["ES256"],
-            audience="authenticated",
-            options={"verify_aud": False},
-        )
-    except (JWTError, httpx.HTTPError, ValueError, TypeError) as exc:
+        payload = firebase_auth.verify_id_token(token)
+    except Exception as exc:
+        logger.error("verify_firebase_token failed: %r", exc)
         raise credentials_exception from exc
 
     if not isinstance(payload, dict):

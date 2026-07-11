@@ -83,7 +83,7 @@ function Step1({
   onNext, onBack,
 }: any) {
   const canContinue = name.trim() && email.trim() && password.length >= 6;
-  const totalSteps = role === 'provider' ? 4 : 3;
+  const totalSteps = role === 'provider' ? 4 : role === 'homeowner' ? 4 : 3;
   return (
     <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled">
       <TouchableOpacity onPress={onBack} style={s.backBtn}>
@@ -161,6 +161,42 @@ function Step2({role, onRole, onNext, onBack}: any) {
       </View>
 
       <Button label="Continue" onPress={onNext} style={s.submitBtn} />
+    </ScrollView>
+  );
+}
+
+// ── Step 3 (homeowner): Service interests ────────────────────────────────────
+function Step3Interests({interests, onToggle, onNext, onBack}: any) {
+  const canContinue = interests.length > 0;
+  return (
+    <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled">
+      <TouchableOpacity onPress={onBack} style={s.backBtn}>
+        <Text style={s.backText}>← Back</Text>
+      </TouchableOpacity>
+      <Text style={s.stepEyebrow}>Step 3 of 4</Text>
+      <Text style={s.stepTitle}>What services interest you?</Text>
+      <Text style={s.stepSub}>Select all that apply. This helps us match you with the right group bids in your neighbourhood.</Text>
+      <StepDots current={3} total={4} />
+
+      <View style={[s.serviceGrid, {marginTop: 24}]}>
+        {SERVICE_OPTIONS.map(svc => {
+          const selected = interests.includes(svc);
+          return (
+            <TouchableOpacity
+              key={svc}
+              onPress={() => onToggle(svc)}
+              style={[s.serviceChip, selected && s.serviceChipActive]}>
+              <Text style={[s.serviceChipText, selected && s.serviceChipTextActive]}>{svc}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {!canContinue && (
+        <Text style={s.interestHint}>Select at least one service to continue.</Text>
+      )}
+
+      <Button label="Continue" onPress={onNext} disabled={!canContinue} style={s.submitBtn} />
     </ScrollView>
   );
 }
@@ -586,6 +622,14 @@ export default function RegisterScreen({navigation, onAuth}: Props) {
   const [address, setAddress] = useState('');
   const [coords, setCoords] = useState<{lat: number; lng: number} | null>(null);
   const [locStatus, setLocStatus] = useState<'idle' | 'detecting' | 'detected' | 'denied'>('idle');
+  const [interests, setInterests] = useState<string[]>([]);
+
+  function toggleInterest(svc: string) {
+    setInterests(prev =>
+      prev.includes(svc) ? prev.filter(item => item !== svc) : [...prev, svc],
+    );
+  }
+
   const [business, setBusiness] = useState({
     companyName: '', bio: '', services: [] as string[],
     serviceArea: '', serviceRadius: 10, isLicensed: false,
@@ -628,6 +672,7 @@ export default function RegisterScreen({navigation, onAuth}: Props) {
         role,
         latitude: coords?.lat,
         longitude: coords?.lng,
+        service_interests: interests.length > 0 ? interests.join(',') : undefined,
       });
 
       if (role === 'provider') {
@@ -676,7 +721,6 @@ export default function RegisterScreen({navigation, onAuth}: Props) {
       );
     }
     if (step === 3) {
-      // Admin skips location — goes straight to community setup
       if (role === 'admin') {
         return (
           <Step3Admin
@@ -688,26 +732,53 @@ export default function RegisterScreen({navigation, onAuth}: Props) {
           />
         );
       }
+      if (role === 'homeowner') {
+        return (
+          <Step3Interests
+            interests={interests}
+            onToggle={toggleInterest}
+            onNext={() => setStep(4)}
+            onBack={() => setStep(2)}
+          />
+        );
+      }
+      // provider → location
       return (
         <Step3
           role={role} address={address} onAddress={setAddress}
           coords={coords} onCoords={setCoords}
           locStatus={locStatus} onLocStatus={setLocStatus}
-          isProvider={role === 'provider'}
-          onNext={() => role === 'provider' ? setStep(4) : handleFinish()}
+          isProvider={true}
+          onNext={() => setStep(4)}
           onBack={() => setStep(2)}
         />
       );
     }
-    return (
-      <Step4
-        data={business}
-        onChange={updateBusiness}
-        onNext={handleFinish}
-        onBack={() => setStep(3)}
-        submitting={submitting}
-      />
-    );
+    if (step === 4) {
+      if (role === 'homeowner') {
+        return (
+          <Step3
+            role={role} address={address} onAddress={setAddress}
+            coords={coords} onCoords={setCoords}
+            locStatus={locStatus} onLocStatus={setLocStatus}
+            isProvider={false}
+            onNext={handleFinish}
+            onBack={() => setStep(3)}
+          />
+        );
+      }
+      // provider → business setup
+      return (
+        <Step4
+          data={business}
+          onChange={updateBusiness}
+          onNext={handleFinish}
+          onBack={() => setStep(3)}
+          submitting={submitting}
+        />
+      );
+    }
+    return null;
   };
 
   return (
@@ -745,6 +816,7 @@ const s = StyleSheet.create({
     borderRadius: radius.md, paddingHorizontal: 14, height: 50,
   },
   submitBtn: {marginTop: 28},
+  interestHint: {fontSize: 13, color: colors.ink400, marginTop: 16, textAlign: 'center'},
 
   // Role cards
   roleCards: {gap: 12, marginTop: 20, marginBottom: 4},

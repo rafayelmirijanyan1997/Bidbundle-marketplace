@@ -38,8 +38,11 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Token expired — clear it so the app redirects to sign-in
-      await clearToken();
+      // Don't clear the token here: a 401 can legitimately happen mid-signup
+      // (backend profile not created yet) while the Firebase session/token
+      // is still perfectly valid. Firebase's own auth state (via
+      // onIdTokenChanged) is the source of truth for sign-in status —
+      // explicit sign-out (logout()) is what clears the token.
       throw new Error('SESSION_EXPIRED');
     }
     const err = await res.json().catch(() => ({detail: res.statusText}));

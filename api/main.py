@@ -48,9 +48,13 @@ app.include_router(hoa_community_router)
 
 @app.on_event("startup")
 def startup():
-    # Schema is managed by Supabase (supabase_schema.sql).
-    # No DDL migrations needed at startup.
-    pass
+    from sqlalchemy import text as sa_text
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa_text("ALTER TABLE users ADD COLUMN service_interests TEXT"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists
 
 
 @app.get("/health")

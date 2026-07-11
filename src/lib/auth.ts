@@ -1,7 +1,13 @@
-import { apiFetch } from "./api";
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const TOKEN_KEY = "neighbid.token";
+import { apiFetch } from "./api";
+import { auth } from "./firebase";
 
 export interface AuthUser {
   id: number;
@@ -17,11 +23,7 @@ export interface AuthUser {
   is_verified: boolean;
 }
 
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
+const TOKEN_KEY = "neighbid.token";
 
 /* ── Token storage ── */
 export function getToken(): string | null {
@@ -49,32 +51,57 @@ export async function register(payload: {
   role: string;
   latitude?: number;
   longitude?: number;
-}): Promise<AuthTokens> {
-  return apiFetch<AuthTokens>("/auth/register", {
+}): Promise<string> {
+  const cred = await createUserWithEmailAndPassword(auth, payload.email, payload.password);
+  const token = await cred.user.getIdToken();
+  setToken(token);
+  await apiFetch("/auth/sync", {
     method: "POST",
-    body: JSON.stringify(payload),
+    token,
+    body: JSON.stringify({
+      role: payload.role,
+      full_name: payload.full_name,
+      phone: payload.phone,
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+    }),
   });
+  return token;
 }
 
-export async function login(email: string, password: string): Promise<AuthTokens> {
-  const body = new URLSearchParams({ username: email, password });
-  const res = await fetch(`${BASE_URL}/auth/login`, {
+export async function login(email: string, password: string): Promise<string> {
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const token = await cred.user.getIdToken();
+  setToken(token);
+  await apiFetch("/auth/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(err.detail ?? "Login failed");
-  }
-  return res.json() as Promise<AuthTokens>;
+    token,
+    body: JSON.stringify({ role: "homeowner", full_name: cred.user.email ?? "" }),
+  }).catch(() => {});
+  return token;
+}
+
+export async function loginWithGoogle(): Promise<string> {
+  const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+  const token = await cred.user.getIdToken();
+  setToken(token);
+  await apiFetch("/auth/sync", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      role: "homeowner",
+      full_name: cred.user.displayName ?? cred.user.email ?? "",
+    }),
+  }).catch(() => {});
+  return token;
 }
 
 export async function fetchMe(token: string): Promise<AuthUser> {
   return apiFetch<AuthUser>("/users/me", { token });
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+  await signOut(auth);
   clearAuth();
   if (typeof window !== "undefined") window.location.href = "/";
 }

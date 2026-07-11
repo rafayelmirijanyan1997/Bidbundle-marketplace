@@ -21,6 +21,7 @@ class SyncIn(BaseModel):
     phone: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    service_interests: str | None = None
 
 
 class HoaRegisterIn(BaseModel):
@@ -37,16 +38,17 @@ class AcceptInviteIn(BaseModel):
     email: str
     full_name: str
     unit_number: str | None = None
+    service_interests: str | None = None
 
 
 class ValidateInviteIn(BaseModel):
     code: str
 
 
-def _set_supabase_uid(db: Session, user_id: int, supabase_uid: str) -> None:
+def _set_firebase_uid(db: Session, user_id: int, firebase_uid: str) -> None:
     db.execute(
-        text("UPDATE users SET supabase_uid = :supabase_uid WHERE id = :user_id"),
-        {"supabase_uid": supabase_uid, "user_id": user_id},
+        text("UPDATE users SET firebase_uid = :firebase_uid WHERE id = :user_id"),
+        {"firebase_uid": firebase_uid, "user_id": user_id},
     )
     db.commit()
 
@@ -57,10 +59,10 @@ def sync_user(
     token_payload: dict = Depends(get_token_payload),
     db: Session = Depends(get_db),
 ) -> User:
-    supabase_uid = token_payload.get("sub")
+    firebase_uid = token_payload.get("uid")
     email = token_payload.get("email", "")
 
-    if not supabase_uid or not email:
+    if not firebase_uid or not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -69,15 +71,15 @@ def sync_user(
 
     user = (
         db.query(User)
-        .filter(text("supabase_uid = :supabase_uid"))
-        .params(supabase_uid=supabase_uid)
+        .filter(text("firebase_uid = :firebase_uid"))
+        .params(firebase_uid=firebase_uid)
         .first()
     )
 
     if user is None:
         user = db.query(User).filter(User.email == email).first()
         if user is not None:
-            _set_supabase_uid(db, user.id, supabase_uid)
+            _set_firebase_uid(db, user.id, firebase_uid)
             db.refresh(user)
 
     if user is None:
@@ -89,10 +91,11 @@ def sync_user(
             role=payload.role,
             latitude=payload.latitude,
             longitude=payload.longitude,
+            service_interests=payload.service_interests,
         )
         db.add(user)
         db.flush()
-        _set_supabase_uid(db, user.id, supabase_uid)
+        _set_firebase_uid(db, user.id, firebase_uid)
         db.refresh(user)
 
         if payload.latitude is not None and payload.longitude is not None:
@@ -122,7 +125,7 @@ def register_hoa(
         hashed_password=None,  # type: ignore[arg-type]
         full_name=payload.full_name,
         role="admin",
-        supabase_uid=token_payload.get("sub"),
+        firebase_uid=token_payload.get("uid"),
     )
     db.add(user)
     db.flush()
@@ -199,7 +202,8 @@ def accept_invite(
         community_id=None,
         unit_number=unit,
         neighborhood=hoa.name if hoa else None,
-        supabase_uid=token_payload.get("sub"),
+        firebase_uid=token_payload.get("uid"),
+        service_interests=payload.service_interests,
     )
     db.add(user)
     db.flush()
