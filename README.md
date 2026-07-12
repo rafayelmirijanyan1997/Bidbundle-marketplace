@@ -34,7 +34,7 @@ Instead of every homeowner calling a plumber, lawn care company, or cleaner sepa
 | Web app | Next.js 14, TypeScript, Tailwind CSS |
 | iOS app | React Native (bare CLI), TypeScript |
 | API | FastAPI, SQLAlchemy, SQLite (dev) / PostgreSQL (prod) |
-| Auth | Supabase Auth (JWT / ES256) |
+| Auth | Firebase Auth |
 | AI features | OpenAI GPT-4o-mini |
 
 ---
@@ -58,7 +58,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Fill in SUPABASE_URL, SUPABASE_ANON_KEY, OPENAI_API_KEY in .env
+# Fill in FIREBASE_SERVICE_ACCOUNT_PATH and OPENAI_API_KEY in .env
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -70,6 +71,8 @@ API runs at `http://localhost:8000`
 
 ```bash
 npm install
+cp .env.example .env.local
+# Fill in the NEXT_PUBLIC_FIREBASE_* values — see Environment Variables below
 npm run dev
 ```
 
@@ -97,15 +100,32 @@ npx react-native run-ios
 
 ### Environment Variables
 
-Create `api/.env`:
+**`api/.env`:**
 
 ```env
 DATABASE_URL=sqlite:///./neighbid.db
-SUPABASE_URL=https://<your-project-ref>.supabase.co
-SUPABASE_ANON_KEY=<your-anon-key>
+FIREBASE_SERVICE_ACCOUNT_PATH=./firebase-service-account.json
 OPENAI_API_KEY=sk-...
 SECRET_KEY=change-me-before-production
 ```
+
+`firebase-service-account.json` is a private key downloaded from **Firebase Console → Project Settings → Service accounts → Generate new private key**. It's gitignored and must never be committed.
+
+**`.env.local`** (repo root, for the web app):
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+```
+
+These come from **Firebase Console → Project Settings → General → Your apps → Web app**.
+
+**A note on the Firebase project:** unlike the backend/web env vars above, the iOS app's Firebase config (`neighbid-iphone/ios/NeighBidIphone/GoogleService-Info.plist`) is *already committed* to this repo — it's not a secret (it ships inside every built app binary regardless). That means a fresh clone's iOS build works out of the box, but it's wired to this project's specific Firebase backend. To actually sign in/register real users, you need either access to that Firebase project (ask to be added as a collaborator) or to swap in your own project's plist, service account, and web config across all three files above.
 
 ---
 
@@ -125,7 +145,6 @@ SECRET_KEY=change-me-before-production
   src/api/            — API client layer
   ios/                — Xcode project
 /src/                 — Next.js pages and components
-/docs/                — Product docs, task specs, decision log
 ```
 
 ---
@@ -143,14 +162,11 @@ SECRET_KEY=change-me-before-production
 
 ## Demo Accounts
 
-All demo accounts use password `Demo1234!`
+There's no pre-seeded demo data — a fresh `alembic upgrade head` gives you empty tables, and there's currently no seed script (the old Supabase-based one was removed during the Firebase migration). Register through the app's normal sign-up flow to create accounts for each role while testing:
 
-| Email | Role |
-|-------|------|
-| alice@neighbid.com | Homeowner |
-| marcus@neighbid.com | Homeowner |
-| profix@neighbid.com | Provider |
-| greenlawn@neighbid.com | Provider |
-| admin@neighbid.com | HOA Manager |
-
-Seed Supabase Auth by running `api/supabase_demo_data.sql` in the Supabase SQL Editor.
+| Role | Where to sign up |
+|------|-------------------|
+| Homeowner | Web or iOS "Get started" flow |
+| Provider | Web or iOS "Get started" flow, select Provider |
+| HOA Manager | Web or iOS "Get started" flow, select HOA Manager |
+| HOA Homeowner | Accept an HOA manager's invite code |
