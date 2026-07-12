@@ -245,33 +245,42 @@ export default function AdminHubScreen() {
     finally { setLoadingBids(null); }
   }
 
-  async function refreshPollBids(pollId: number) {
-    const bids = await getPollBids(pollId);
-    setExpandedBids(prev => ({...prev, [pollId]: bids}));
+  // Accepting a bid declines every other pending bid on the same request
+  // server-side (see accept_bid in api/routers/bids.py) — mirror that here
+  // so the board updates correctly without a second round-trip to refetch.
+  function applyBidDecisionLocally(pollId: number, bidId: number, action: 'accept' | 'decline') {
+    setExpandedBids(prev => {
+      const bids = prev[pollId];
+      if (!bids) return prev;
+      const updated = bids.map(b => {
+        if (b.bid_id === bidId) return {...b, status: action === 'accept' ? 'accepted' : 'declined'};
+        if (action === 'accept' && b.status === 'pending') return {...b, status: 'declined'};
+        return b;
+      });
+      return {...prev, [pollId]: updated};
+    });
   }
 
-  function handleAcceptBid(pollId: number, bidId: number, providerName: string) {
-    Alert.alert('Accept bid', `Accept ${providerName}'s bid? They'll be notified they won, and all other bids on this request will be declined.`, [
-      {text: 'Cancel', style: 'cancel'},
-      {text: 'Accept', onPress: async () => {
-        setActioningBid(bidId);
-        try {
-          await acceptPollBid(bidId);
-          await refreshPollBids(pollId);
-        } catch (e: any) { Alert.alert('Error', e.message); }
-        finally { setActioningBid(null); }
-      }},
-    ]);
-  }
+  function handleBidDecision(pollId: number, bidId: number, providerName: string, action: 'accept' | 'decline') {
+    const {title, message, confirmLabel} = action === 'accept'
+      ? {
+          title: 'Accept bid',
+          message: `Accept ${providerName}'s bid? They'll be notified they won, and all other bids on this request will be declined.`,
+          confirmLabel: 'Accept',
+        }
+      : {
+          title: 'Decline bid',
+          message: `Decline ${providerName}'s bid?`,
+          confirmLabel: 'Decline',
+        };
 
-  function handleDeclineBid(pollId: number, bidId: number, providerName: string) {
-    Alert.alert('Decline bid', `Decline ${providerName}'s bid?`, [
+    Alert.alert(title, message, [
       {text: 'Cancel', style: 'cancel'},
-      {text: 'Decline', style: 'destructive', onPress: async () => {
+      {text: confirmLabel, style: action === 'decline' ? 'destructive' : undefined, onPress: async () => {
         setActioningBid(bidId);
         try {
-          await declinePollBid(bidId);
-          await refreshPollBids(pollId);
+          await (action === 'accept' ? acceptPollBid(bidId) : declinePollBid(bidId));
+          applyBidDecisionLocally(pollId, bidId, action);
         } catch (e: any) { Alert.alert('Error', e.message); }
         finally { setActioningBid(null); }
       }},
@@ -645,7 +654,7 @@ export default function AdminHubScreen() {
                               <Text style={s.bidBoardEmpty}>No bids submitted yet. Share this request with providers.</Text>
                             ) : bids.map((b, i) => (
                               <View key={b.bid_id} style={[s.bidRow, i < bids.length - 1 && s.bidRowBorder]}>
-                                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                <View style={s.bidRowTop}>
                                   <View style={s.bidRank}>
                                     <Text style={s.bidRankText}>{i + 1}</Text>
                                   </View>
@@ -673,14 +682,14 @@ export default function AdminHubScreen() {
                                     <View style={s.bidReviewActions}>
                                       <TouchableOpacity
                                         style={[s.bidReviewBtn, s.bidReviewDecline]}
-                                        onPress={() => handleDeclineBid(p.id, b.bid_id, b.provider_name)}
+                                        onPress={() => handleBidDecision(p.id, b.bid_id, b.provider_name, 'decline')}
                                         activeOpacity={0.8}>
                                         <XCircle size={13} color={colors.ink500} strokeWidth={2} />
                                         <Text style={s.bidReviewDeclineText}>Decline</Text>
                                       </TouchableOpacity>
                                       <TouchableOpacity
                                         style={[s.bidReviewBtn, s.bidReviewAccept]}
-                                        onPress={() => handleAcceptBid(p.id, b.bid_id, b.provider_name)}
+                                        onPress={() => handleBidDecision(p.id, b.bid_id, b.provider_name, 'accept')}
                                         activeOpacity={0.8}>
                                         <CheckCircle size={13} color="#fff" strokeWidth={2} />
                                         <Text style={s.bidReviewAcceptText}>Accept</Text>
@@ -927,6 +936,7 @@ const s = StyleSheet.create({
   bidBoardEmpty: {fontSize: 13, color: colors.ink400, padding: 14, textAlign: 'center'},
   bidRow: {paddingHorizontal: 14, paddingVertical: 12, gap: 10},
   bidRowBorder: {borderBottomWidth: 1, borderBottomColor: colors.border},
+  bidRowTop: {flexDirection: 'row', alignItems: 'center'},
   bidRank: {
     width: 24, height: 24, borderRadius: 12, backgroundColor: colors.warmDark,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
