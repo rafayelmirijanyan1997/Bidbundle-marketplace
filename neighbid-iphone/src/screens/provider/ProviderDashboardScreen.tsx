@@ -8,9 +8,10 @@ import {
   MapPin, Briefcase, Star, MessageCircle, ChevronRight, Zap, ClipboardList, CalendarDays, Sparkles, TrendingUp, Bell,
 } from 'lucide-react-native';
 import {colors, radius, shadow} from '../../theme';
-import {providerApi, ProviderDashboard, JobFeedItem, ScheduleItem, ProviderProfile, DemandForecastResult} from '../../api/provider';
+import {providerApi, ProviderDashboard, JobFeedItem, ScheduleItem, ProviderProfile, DemandForecastResult, Notification} from '../../api/provider';
 import {useAuth} from '../../hooks/useAuth';
 import {Chip} from '../../components/Chip';
+import {NotificationCard} from '../../components/NotificationCard';
 import {formatScheduleDates, formatScheduleDuration, groupScheduleItems} from './scheduleUtils';
 import {getLosAngelesGreeting} from '../../utils/time';
 
@@ -83,21 +84,24 @@ export default function ProviderDashboardScreen({
   const [jobs, setJobs] = useState<JobFeedItem[]>([]);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [forecast, setForecast] = useState<DemandForecastResult | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const [dash, prof, feed, sched] = await Promise.all([
+      const [dash, prof, feed, sched, notifs] = await Promise.all([
         providerApi.getDashboard(),
         providerApi.getProfile(),
         providerApi.getJobFeed(),
         providerApi.getSchedule(),
+        providerApi.getNotifications().catch(() => []),
       ]);
       setDashboard(dash);
       setProfile(prof);
       setJobs(feed.slice(0, 3));
       setSchedule(sched.filter(s => new Date(s.scheduled_at) >= new Date()));
+      setNotifications(notifs);
       const forecastNeighborhood = prof.neighborhood ?? user?.neighborhood;
       if (forecastNeighborhood) {
         try {
@@ -115,6 +119,14 @@ export default function ProviderDashboardScreen({
 
   useEffect(() => {load();}, [load]);
 
+  async function dismissNotification(id: number) {
+    // GET /notifications only ever returns unread rows, so removing it from
+    // local state (optimistically) plus marking it read server-side is
+    // sufficient — no client-side "seen" bookkeeping needed.
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    await providerApi.markNotificationRead(id).catch(() => {});
+  }
+
   const companyName = profile?.company_name ?? user?.full_name ?? 'Provider';
   const firstName = companyName.split(' ')[0];
   const totalRevenue = Math.round((dashboard?.revenue_total_cents ?? 0) / 100);
@@ -122,6 +134,7 @@ export default function ProviderDashboardScreen({
   const greeting = getLosAngelesGreeting();
   const topForecast = forecast?.predictions?.[0] ?? null;
   const shortageCount = forecast?.predictions.filter(prediction => prediction.provider_shortage).length ?? 0;
+  const visibleNotifications = notifications.slice(0, 2);
 
   if (loading) {
     return <SafeAreaView style={s.safe} edges={['top']}><View style={s.centered}><Text style={s.loadTxt}>Loading…</Text></View></SafeAreaView>;
@@ -171,6 +184,16 @@ export default function ProviderDashboardScreen({
             </View>
           </View>
         </View>
+
+        {/* ── Notifications (dismissable) ── */}
+        {visibleNotifications.map(n => (
+          <NotificationCard
+            key={n.id}
+            title={n.title}
+            body={n.body}
+            onDismiss={() => dismissNotification(n.id)}
+          />
+        ))}
 
         {/* Top job hero */}
         {jobs[0] ? (

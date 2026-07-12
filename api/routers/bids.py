@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from dependencies import require_role, get_db
 from models.bid import Bid
 from models.message import ChannelMember, GroupChannel
+from models.notification import Notification
 from models.schedule_item import ScheduleItem
 from models.request import ServiceRequest
 from models.user import User
@@ -28,7 +29,21 @@ def _get_request_or_404(db: Session, request_id: int) -> ServiceRequest:
     return service_request
 
 
-def _require_request_owner(current_user: User, service_request: ServiceRequest) -> None:
+def _require_bid_decision_access(current_user: User, service_request: ServiceRequest) -> None:
+    """
+    Only the request's owner may accept/decline bids on it.
+
+    For an individually-created request that's the homeowner who made it.
+    For a community request launched from an HOA poll (see launch_poll_bid
+    in hoa_community.py), the "owner" is the admin who launched it —
+    ServiceRequest.user_id is set to that admin's id at creation time, so
+    today this remains a single identity check either way. There is no
+    independent ServiceRequest -> HOA link in the schema; this relies on
+    that launch_poll_bid convention. If HOAs ever support co-managers (or
+    a poll-launched request's owner can change), this needs a real
+    "does this admin manage the HOA behind this request" check instead of
+    an identity comparison.
+    """
     if current_user.id != service_request.user_id:
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
@@ -150,11 +165,11 @@ def create_bid(
 def accept_bid(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("homeowner", "hoa_homeowner")),
+    current_user: User = Depends(require_role("homeowner", "hoa_homeowner", "admin")),
 ) -> BidOut:
     bid = _get_bid_or_404(db, id)
     service_request = _get_request_or_404(db, bid.request_id)
-    _require_request_owner(current_user, service_request)
+    _require_bid_decision_access(current_user, service_request)
 
     same_request_bids = db.query(Bid).filter(Bid.request_id == service_request.id).all()
     for existing_bid in same_request_bids:
@@ -172,6 +187,17 @@ def accept_bid(
     if _channel:
         _channel.expires_at = datetime.utcnow() + timedelta(days=30)
         db.add(_channel)
+
+    db.add(
+        Notification(
+            user_id=bid.provider_id,
+            type="bid_accepted",
+            title="You won the bid!",
+            body=f'Your bid on "{service_request.title}" was accepted. You are the winning provider.',
+            action_url="/app/provider/bids",
+        )
+    )
+
     db.commit()
     db.refresh(bid)
     return bid
@@ -181,11 +207,11 @@ def accept_bid(
 def decline_bid(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("homeowner", "hoa_homeowner")),
+    current_user: User = Depends(require_role("homeowner", "hoa_homeowner", "admin")),
 ) -> BidOut:
     bid = _get_bid_or_404(db, id)
     service_request = _get_request_or_404(db, bid.request_id)
-    _require_request_owner(current_user, service_request)
+    _require_bid_decision_access(current_user, service_request)
 
     bid.status = "declined"
     db.add(bid)

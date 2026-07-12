@@ -139,6 +139,15 @@ export interface DemandForecastResult {
   stub: boolean;
 }
 
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  action_url: string | null;
+  created_at: string;
+}
+
 export const providerApi = {
   getDashboard: () => apiFetch<ProviderDashboard>('/provider/dashboard'),
   getProfile: () => apiFetch<ProviderProfile>('/provider/me'),
@@ -147,6 +156,12 @@ export const providerApi = {
   getJobFeed: (category?: string) =>
     apiFetch<JobFeedItem[]>(`/provider/job-feed${category ? `?category=${category}` : ''}`),
   getBids: () => apiFetch<ProviderBid[]>('/provider/bids'),
+  // GET /notifications only ever returns unread notifications (server-side
+  // filtered), so there's no client-visible "read" state to track — dismiss
+  // just marks it read server-side via markNotificationRead below.
+  getNotifications: () => apiFetch<Notification[]>('/notifications'),
+  markNotificationRead: (id: number) =>
+    apiFetch<void>(`/notifications/${id}/read`, {method: 'POST'}),
   getSchedule: () => apiFetch<ScheduleItem[]>('/provider/schedule'),
   getConversations: () => apiFetch<ProviderConversation[]>('/provider/conversations'),
   getChannels: () => apiFetch<ProviderGroupChannel[]>('/provider/channels'),
